@@ -1,16 +1,8 @@
-// Typedef for filtering orders by status
-typedef OrderFilter = bool Function(Order order);
-
-// Define a filter for completed orders
-OrderFilter completedOrderFilter = (Order order) {
-  return order.orderState == OrderState.completed;
-};
-
 // Typedef for sorting orders by date
 typedef OrderSort = int Function(Order order1, Order order2);
 
 // Define a sorting function for sorting by most recent order date
-OrderSort recentFirstSort = (Order order1, Order order2) {
+OrderSort sortByDateRecentFirst = (Order order1, Order order2) {
   return order2.orderDate.compareTo(order1.orderDate); // Most recent first
 };
 
@@ -52,7 +44,7 @@ abstract class Coffee {
       return 0;
     } else {
       return addOnsWithAmount!.entries.fold(
-          0, (output, current) => output + (current.value * current.key.price));
+          0, (output, MapEntry currentEntry) => output + (currentEntry.value * currentEntry.key.price));
     }
   }
 
@@ -84,8 +76,8 @@ class Latte extends Coffee with Discountable {
 
 // Mixin for discount functionality
 mixin Discountable {
-  double applyDiscount({required double discount, required double price}) {
-    return price * ((100 - discount) / 100);
+  double applyDiscount({required double discountPercentage, required double priceBeforeDiscount}) {
+    return priceBeforeDiscount * ((100 - discountPercentage) / 100);
   }
 }
 
@@ -118,6 +110,17 @@ class Order with Discountable {
     List<String> coffeeNames = coffees.map((cof) => cof.toString()).toList();
     return "${orderState.name.toUpperCase()} Order for $customerName was ordered on $orderDate. \n Ordered items are $coffeeNames. \n TotalPrice: ${calculateTotal()}";
   }
+
+  double getPriceAfterDiscount(){
+    double priceBeforeDiscount = calculateTotal();
+
+    if(priceBeforeDiscount>100){
+      return applyDiscount(discountPercentage: 0.3, priceBeforeDiscount: priceBeforeDiscount);
+    }
+    else{
+      return priceBeforeDiscount;
+    }
+  }
 }
 
 class OrderManagment {
@@ -131,6 +134,7 @@ class OrderManagment {
     orders.remove(order);
   }
 
+  //simulate process that takes time
   Future<void> completeOrder(Order order) async {
     await Future.delayed(Duration(seconds: 3));
     order.completeOrder();
@@ -148,14 +152,16 @@ class OrderManagment {
     return orders.where((order) => order.customerName == userName).toList();
   }
 
-  // Sorting by date
+  // Sorting by date , sort function is void, but we need to sort the orders and return the sorted orders.. so we used cascade
   List<Order> sortOrdersByDate() {
-    return orders..sort(recentFirstSort);
+    return orders..sort(sortByDateRecentFirst);
   }
 
   // Get Last Order of a customer
   Order getMostRecentOrderOfCustomer(userName) {
-    return (getCustomerOrders(userName)..sort(recentFirstSort)).first;
+    var customerOrders = getCustomerOrders(userName);
+    var sortedOrders = customerOrders..sort(sortByDateRecentFirst);
+    return sortedOrders.first;
   }
 
   // Calculating total revenue from completed orders
@@ -209,6 +215,7 @@ void main() async {
   var pendingOrders = orderManagment.getOrders(orderState: OrderState.pending);
   pendingOrders.forEach(print);
 
+  print("--------------------------------");
   print("completing order1...");
 
   await orderManagment.completeOrder(todayOrders[0]);
@@ -218,24 +225,25 @@ void main() async {
       orderManagment.getOrders(orderState: OrderState.completed);
   completedOrders.forEach(print);
 
+  print("--------------------------------");
+
   var totalRevenue = orderManagment.calculateRevenue();
   print('Total Revenue: \$$totalRevenue');
 
+  print("--------------------------------");
   //calculate Total For user before discount
-  Order janeSmithOrder =
-      orderManagment.getMostRecentOrderOfCustomer('Jane Smith');
+  Order janeSmithOrder = orderManagment.getMostRecentOrderOfCustomer('Jane Smith');
   print("Jane Smith order");
-  double janeSmithOrderPrice = janeSmithOrder.calculateTotal();
-  print("before discout = ${janeSmithOrderPrice.toCurrency()}");
-  //calculate Total For user after 10% discount
-  print(
-      "after 10% discout = ${janeSmithOrder.applyDiscount(discount: 0.1, price: janeSmithOrderPrice)}");
+  double janeSmithOrderPriceBeforeDiscount = janeSmithOrder.calculateTotal();
+  print("before discout = ${janeSmithOrderPriceBeforeDiscount.toCurrency()}");
+  double janeSmithOrderPriceAfterDiscount = janeSmithOrder.getPriceAfterDiscount();
+  print("after discout = ${janeSmithOrderPriceAfterDiscount.toCurrency()}");
 }
 
 // Extension method to format currency
 extension CurrencyFormatter on double {
   String toCurrency() {
-    return '\$${toStringAsFixed(2)}';
+    return '\$ ${toStringAsFixed(2)}';
   }
 }
 
